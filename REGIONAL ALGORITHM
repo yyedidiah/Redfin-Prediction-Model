@@ -1,0 +1,123 @@
+## creates Regional Algorithm
+
+RegionalForecast = df_NEast.groupby('PERIOD BEGIN').agg({'INVENTORY': 'sum', 'HOMES SOLD': 'sum', 'ACTIVE LISTINGS': 'sum', 'PENDING SALES': 'sum', 'MEDIAN DAYS ON MARKET (DAYS)': 'mean'}).reset_index()
+
+RegionalForecast['REGIONAL MOS'] = RegionalForecast['ACTIVE LISTINGS'] / RegionalForecast['HOMES SOLD']
+
+RegionalForecast['1 MONTH REGIONAL MOS LAG'] = RegionalForecast['REGIONAL MOS'].shift(1)
+RegionalForecast['3 MONTH REGIONAL MOS LAG'] = RegionalForecast['REGIONAL MOS'].shift(3)
+RegionalForecast['6 MONTH REGIONAL MOS LAG'] = RegionalForecast['REGIONAL MOS'].shift(6)
+RegionalForecast['12 MONTH REGIONAL MOS LAG'] = RegionalForecast['REGIONAL MOS'].shift(12)
+
+RegionalForecast['1 MONTH REGIONAL DOM LAG'] = RegionalForecast['MEDIAN DAYS ON MARKET (DAYS)'].shift(1)
+RegionalForecast['3 MONTH REGIONAL DOM LAG'] = RegionalForecast['MEDIAN DAYS ON MARKET (DAYS)'].shift(3)
+RegionalForecast['6 MONTH REGIONAL DOM LAG'] = RegionalForecast['MEDIAN DAYS ON MARKET (DAYS)'].shift(6)
+RegionalForecast['12 MONTH REGIONAL DOM LAG'] = RegionalForecast['MEDIAN DAYS ON MARKET (DAYS)'].shift(12)
+
+RegionalForecast['1 MONTH REGIONAL INV LAG'] = RegionalForecast['INVENTORY'].shift(1)
+RegionalForecast['3 MONTH REGIONAL INV LAG'] = RegionalForecast['INVENTORY'].shift(3)
+RegionalForecast['6 MONTH REGIONAL INV LAG'] = RegionalForecast['INVENTORY'].shift(6)
+RegionalForecast['12 MONTH REGIONAL INV LAG'] = RegionalForecast['INVENTORY'].shift(12)
+
+RegionalForecast['REGIONAL 1MO CHANGE MOS'] = RegionalForecast['REGIONAL MOS'].diff()
+RegionalForecast['REGIONAL 3MO CHANGE MOS'] = RegionalForecast['REGIONAL MOS'].diff(3)
+RegionalForecast['REGIONAL 6MO CHANGE MOS'] = RegionalForecast['REGIONAL MOS'].diff(6)
+RegionalForecast['REGIONAL 12MO CHANGE MOS'] = RegionalForecast['REGIONAL MOS'].diff(12)
+
+RegionalForecast['REGIONAL 1MO CHANGE DOM'] = RegionalForecast['MEDIAN DAYS ON MARKET (DAYS)'].diff()
+RegionalForecast['REGIONAL 3MO CHANGE DOM'] = RegionalForecast['MEDIAN DAYS ON MARKET (DAYS)'].diff(3)
+RegionalForecast['REGIONAL 6MO CHANGE DOM'] = RegionalForecast['MEDIAN DAYS ON MARKET (DAYS)'].diff(6)
+RegionalForecast['REGIONAL 12MO CHANGE DOM'] = RegionalForecast['MEDIAN DAYS ON MARKET (DAYS)'].diff(12)
+
+RegionalForecast['REGIONAL 1MO CHANGE INV'] = RegionalForecast['INVENTORY'].diff()
+RegionalForecast['REGIONAL 3MO CHANGE INV'] = RegionalForecast['INVENTORY'].diff(3)
+RegionalForecast['REGIONAL 6MO CHANGE INV'] = RegionalForecast['INVENTORY'].diff(6)
+RegionalForecast['REGIONAL 12MO CHANGE INV'] = RegionalForecast['INVENTORY'].diff(12)
+
+
+RegionalForecast['MONTH'] = RegionalForecast['PERIOD BEGIN'].dt.month
+RegionalForecast['MONTH_SIN'] = np.sin(2 * np.pi * RegionalForecast['MONTH']/12)
+RegionalForecast['MONTH_COS'] = np.cos(2 * np.pi * RegionalForecast['MONTH']/12)
+RegionalForecast['MY MOS'] = ((RegionalForecast['ACTIVE LISTINGS'] / RegionalForecast['PENDING SALES']) + (RegionalForecast['INVENTORY'] / RegionalForecast['HOMES SOLD'])) / 2
+RegionalForecast['CLOSED SALES TRAILING 12MO'] = RegionalForecast['HOMES SOLD'].rolling(12).sum()
+RegionalForecast['TRUE MOS'] = RegionalForecast['INVENTORY'] / (RegionalForecast['CLOSED SALES TRAILING 12MO'] / 12)
+RegionalForecast['QUARTER'] = RegionalForecast['PERIOD BEGIN'].dt.quarter
+RegionalForecast['NEXT REGIONAL MONTH MOS'] = (RegionalForecast['REGIONAL MOS'].shift(-1))
+
+
+quantile1 = RegionalForecast['REGIONAL MOS'].quantile(0.25)
+
+quantile3 = RegionalForecast['REGIONAL MOS'].quantile(0.75)
+
+intqr = quantile3 - quantile1
+lower_boundA = quantile1 - 1.5 * intqr
+upper_boundA = quantile3 + 1.5 * intqr
+
+RegionalForecast['MOS_OUTLIER'] = ((RegionalForecast['REGIONAL MOS'] < lower_boundA) | (RegionalForecast['REGIONAL MOS'] > upper_boundA))
+
+RegionalFeatures = [
+    '1 MONTH REGIONAL MOS LAG',
+    '3 MONTH REGIONAL MOS LAG',
+    '6 MONTH REGIONAL MOS LAG',
+    '12 MONTH REGIONAL MOS LAG',
+    '1 MONTH REGIONAL DOM LAG',
+    '3 MONTH REGIONAL DOM LAG',
+    '6 MONTH REGIONAL DOM LAG',
+    '12 MONTH REGIONAL DOM LAG',
+    '1 MONTH REGIONAL INV LAG',
+    '3 MONTH REGIONAL INV LAG',
+    '6 MONTH REGIONAL INV LAG',
+    '12 MONTH REGIONAL INV LAG',
+    'REGIONAL 1MO CHANGE MOS',
+    'REGIONAL 3MO CHANGE MOS',
+    'REGIONAL 6MO CHANGE MOS',
+    'REGIONAL 12MO CHANGE MOS',
+    'REGIONAL 1MO CHANGE DOM',
+    'REGIONAL 3MO CHANGE DOM',
+    'REGIONAL 6MO CHANGE DOM',
+    'REGIONAL 12MO CHANGE DOM',
+    'REGIONAL 1MO CHANGE INV',
+    'REGIONAL 3MO CHANGE INV',
+    'REGIONAL 6MO CHANGE INV',
+    'REGIONAL 12MO CHANGE INV',
+    'MONTH_SIN',
+    'MONTH_COS',
+    'MOS_OUTLIER', 
+    'QUARTER'
+]
+
+Regional_Model_Data = RegionalForecast[RegionalFeatures + ['NEXT REGIONAL MONTH MOS']].dropna()
+
+RegionalX = Regional_Model_Data[RegionalFeatures]
+Regionaly = Regional_Model_Data['NEXT REGIONAL MONTH MOS']
+
+RegionalTraining = Regional_Model_Data[(RegionalForecast.loc[Regional_Model_Data.index, 'PERIOD BEGIN'] >= '2023-01-01') & (RegionalForecast.loc[Regional_Model_Data.index, 'PERIOD BEGIN'] < '2026-01-01')].copy()
+RegionalTest = Regional_Model_Data[RegionalForecast.loc[Regional_Model_Data.index, 'PERIOD BEGIN'] >= '2026-01-01'].copy()
+
+RegionalX_Train = RegionalTraining[RegionalFeatures]
+Regionaly_Train = RegionalTraining['NEXT REGIONAL MONTH MOS']
+
+RegionalX_Test = RegionalTest[RegionalFeatures]
+Regionaly_Test = RegionalTest['NEXT REGIONAL MONTH MOS']
+
+RegionalModel = RandomForestRegressor( n_estimators = 103, random_state=42, max_depth=4, min_samples_leaf=4, max_features= .01)
+
+RegionalModel.fit(RegionalX_Train, Regionaly_Train)
+
+RegionalPredictions = RegionalModel.predict(RegionalX_Test)
+
+RegionalMAE = mean_absolute_error(Regionaly_Test, RegionalPredictions)
+
+print(f'Test set size: {len(Regionaly_Test)} rows')
+print(f'Mean absolute error: {RegionalMAE:.2f} months')
+
+RegionalImportances = pd.Series(RegionalModel.feature_importances_, index=features).sort_values(ascending=False)
+RegionalImportances
+
+predictionsB = RegionalModel.predict(RegionalX_Test)
+
+RegionalComparison = pd.DataFrame({
+    'ACTUAL REGIONAL': Regionaly_Test.values,
+    'MODEL PREDICTION': predictionsB,
+})
+RegionalComparison
