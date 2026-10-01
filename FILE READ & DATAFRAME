@@ -1,0 +1,14 @@
+## FILE READING CREATING DATA FRAME
+## This creates a variable called df that calls to pandas libaray and establishes a data frame
+# Calls pandas to read a csv in specific folders. Example fm = pd.read_csv('../folder/folder/csvname.csv')
+df = pd.read_csv('../data/raw/RedFinHousingMarketDataMetrics.csv')
+## This creates a variable called counties and in contains these should be in there
+counties = ['Adams County, IN', 'Allen County, IN', 'Jay County, IN', 'Huntington County, IN', 
+        'Wells County, IN', 'Whitley County, IN']
+
+df_NEast = df[df['REGION NAME'].isin(counties)].copy()
+
+df_NEast['PERIOD BEGIN'] = pd.to_datetime(df_NEast['PERIOD BEGIN'])
+df_NEast['PERIOD END'] = pd.to_datetime(df_NEast['PERIOD END'])
+
+df_NEast = df_NEast.sort_values(['REGION NAME', 'PERIOD BEGIN'])
