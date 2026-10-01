@@ -1,0 +1,112 @@
+## creates an algorithm for a volitile county
+
+Adams = df_NEast[(df_NEast['REGION NAME'] == 'Adams County, IN')].copy()
+Adams = Adams.sort_values('PERIOD BEGIN').copy()
+Adams['1 MONTH LAG MOS'] = Adams['MONTHS OF SUPPLY'].shift(1)
+Adams['3 MONTH LAG MOS'] = Adams['MONTHS OF SUPPLY'].shift(3)
+Adams['6 MONTH LAG MOS'] = Adams['MONTHS OF SUPPLY'].shift(6)
+Adams['12 MONTH LAG MOS'] = Adams['MONTHS OF SUPPLY'].shift(12)
+Adams['1MO CHANGE MOS'] = Adams['MONTHS OF SUPPLY'].diff()
+Adams['3MO CHANGE MOS'] = Adams['MONTHS OF SUPPLY'].diff(3)
+Adams['6MO CHANGE MOS'] = Adams['MONTHS OF SUPPLY'].diff(6)
+Adams['12MO CHANGE MOS'] = Adams['MONTHS OF SUPPLY'].diff(12)
+
+Adams['1 MONTH LAG DOM'] = Adams['MEDIAN DAYS ON MARKET (DAYS)'].shift(1)
+Adams['3 MONTH LAG DOM'] = Adams['MEDIAN DAYS ON MARKET (DAYS)'].shift(3)
+Adams['6 MONTH LAG DOM'] = Adams['MEDIAN DAYS ON MARKET (DAYS)'].shift(6)
+Adams['12 MONTH LAG DOM'] = Adams['MEDIAN DAYS ON MARKET (DAYS)'].shift(12)
+Adams['1MO CHANGE DOM'] = Adams['MEDIAN DAYS ON MARKET (DAYS)'].diff()
+Adams['3MO CHANGE DOM'] = Adams['MEDIAN DAYS ON MARKET (DAYS)'].diff(3)
+Adams['6MO CHANGE DOM'] = Adams['MEDIAN DAYS ON MARKET (DAYS)'].diff(6)
+Adams['12MO CHANGE DOM'] = Adams['MEDIAN DAYS ON MARKET (DAYS)'].diff(12)
+
+Adams['1 MONTH LAG INV'] = Adams['INVENTORY'].shift(1)
+Adams['3 MONTH LAG INV'] = Adams['INVENTORY'].shift(3)
+Adams['6 MONTH LAG INV'] = Adams['INVENTORY'].shift(6)
+Adams['12 MONTH LAG INV'] = Adams['INVENTORY'].shift(12)
+Adams['1MO CHANGE INV'] = Adams['INVENTORY'].diff()
+Adams['3MO CHANGE INV'] = Adams['INVENTORY'].diff(3)
+Adams['6MO CHANGE INV'] = Adams['INVENTORY'].diff(6)
+Adams['12MO CHANGE INV'] = Adams['INVENTORY'].diff(12)
+
+
+Adams['MONTH'] = Adams['PERIOD BEGIN'].dt.month
+Adams['MONTH_SIN'] = np.sin(2 * np.pi * Adams['MONTH']/12)
+Adams['MONTH_COS'] = np.cos(2 * np.pi * Adams['MONTH']/12)
+Adams['MY MOS'] = ((Adams['ACTIVE LISTINGS'] / Adams['PENDING SALES']) + (Adams['INVENTORY'] / Adams['HOMES SOLD'])) / 2
+Adams['CLOSED SALES TRAILING 12MO'] = Adams['HOMES SOLD'].rolling(12).sum()
+Adams['TRUE MOS'] = Adams['INVENTORY'] / (Adams['CLOSED SALES TRAILING 12MO'] / 12)
+Adams['QUARTER'] = Adams['PERIOD BEGIN'].dt.quarter
+AdamsResult = seasonal_decompose(Adams['TRUE MOS'].dropna(), model='additive', period=12)
+Adams['NEXT MONTH MOS'] = (Adams['MONTHS OF SUPPLY'].shift(-1))
+
+
+AdamsQ1 = Adams['MONTHS OF SUPPLY'].quantile(0.25)
+
+AdamsQ3 = Adams['MONTHS OF SUPPLY'].quantile(0.75)
+
+AdamsIQR = AdamsQ3 - AdamsQ1
+AdamsLowerBound = AdamsQ1 - 1.5 * AdamsIQR
+AdamsUpperBound = AdamsQ3 + 1.5 * AdamsIQR
+
+Adams['MOS_OUTLIER'] = ((Adams['MONTHS OF SUPPLY'] < AdamsLowerBound) | (Adams['MONTHS OF SUPPLY'] > AdamsUpperBound))
+
+AdamsFeatures = [
+    '1 MONTH LAG MOS',
+    '3 MONTH LAG MOS',
+    '6 MONTH LAG MOS',
+    '12 MONTH LAG MOS',
+    '1 MONTH LAG DOM',
+    '3 MONTH LAG DOM',
+    '6 MONTH LAG DOM',
+    '12 MONTH LAG DOM',
+    '1 MONTH LAG INV',
+    '3 MONTH LAG INV',
+    '6 MONTH LAG INV',
+    '12 MONTH LAG INV',
+    '1MO CHANGE MOS',
+    '3MO CHANGE MOS',
+    '6MO CHANGE MOS',
+    '12MO CHANGE MOS',
+    '1MO CHANGE DOM',
+    '3MO CHANGE DOM', 
+    '6MO CHANGE DOM', 
+    '12MO CHANGE DOM',
+    '1MO CHANGE INV',
+    '3MO CHANGE INV',
+    '6MO CHANGE INV',
+    '12MO CHANGE INV',
+    'MONTH_SIN',
+    'MONTH_COS',
+    'MOS_OUTLIER', 
+    'QUARTER'
+]
+
+AdamsModelData = Adams[AdamsFeatures + ['NEXT MONTH MOS']].dropna()
+
+AdamsX = AdamsModelData[AdamsFeatures]
+AdamsY = AdamsModelData['NEXT MONTH MOS']
+
+AdamsTrain = AdamsModelData[(Adams.loc[AdamsModelData.index, 'PERIOD BEGIN'] >= '2023-01-01') & (Adams.loc[AdamsModelData.index, 'PERIOD BEGIN'] < '2026-01-01')].copy()
+
+AdamsTest = AdamsModelData[Adams.loc[AdamsModelData.index, 'PERIOD BEGIN'] >= '2026-01-01'].copy()
+
+AdamsXTrain = AdamsTrain[AdamsFeatures]
+AdamsYTrain = AdamsTrain['NEXT MONTH MOS']
+
+AdamsXTest = AdamsTest[AdamsFeatures]
+AdamsYTest = AdamsTest['NEXT MONTH MOS']
+
+AdamsModel = RandomForestRegressor( n_estimators = 70, random_state=42, max_depth=2, min_samples_leaf=4, max_features= .01)
+
+AdamsModel.fit(AdamsXTrain, AdamsYTrain)
+
+AdamsPredictions = AdamsModel.predict(AdamsXTest)
+
+AdamsMAE = mean_absolute_error(AdamsYTest, AdamsPredictions)
+
+print(f'Test set size: {len(AdamsYTest)} rows')
+print(f'Mean absolute error: {AdamsMAE:.2f} months')
+
+AdamsImportances = pd.Series(AdamsModel.feature_importances_, index=AdamsFeatures).sort_values(ascending=False)
+AdamsImportances
