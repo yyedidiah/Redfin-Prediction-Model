@@ -1,0 +1,18 @@
+## Creates Market Signal
+
+def classify_market(months_supply):
+    if pd.isna(months_supply):
+        return 'no data'
+    elif months_supply > 6:
+        return 'buyer'
+    elif months_supply < 4:
+        return 'seller'
+    else:
+        return 'balanced'
+df_NEast['MARKET SIGNAL'] = df_NEast['MONTHS OF SUPPLY'].apply(classify_market)
+
+df_NEast['PREVIOUS SIGNAL'] = df_NEast.groupby('REGION NAME')['MARKET SIGNAL'].shift(1)
+
+changed = df_NEast[(df_NEast['MARKET SIGNAL'] != df_NEast['PREVIOUS SIGNAL']) & (df_NEast['PREVIOUS SIGNAL'].notna())]
+
+Recent_shifts = changed.groupby('REGION NAME').tail(1)
