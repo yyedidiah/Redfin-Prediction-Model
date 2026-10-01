@@ -1,0 +1,111 @@
+## Creates the Algorithmn I refer to
+Allen = df_NEast[(df_NEast['REGION NAME'] == 'Allen County, IN')].copy()
+Allen = Allen.sort_values('PERIOD BEGIN').copy()
+Allen['1 MONTH LAG MOS'] = Allen['MONTHS OF SUPPLY'].shift(1)
+Allen['3 MONTH LAG MOS'] = Allen['MONTHS OF SUPPLY'].shift(3)
+Allen['6 MONTH LAG MOS'] = Allen['MONTHS OF SUPPLY'].shift(6)
+Allen['12 MONTH LAG MOS'] = Allen['MONTHS OF SUPPLY'].shift(12)
+Allen['1MO CHANGE MOS'] = Allen['MONTHS OF SUPPLY'].diff()
+Allen['3MO CHANGE MOS'] = Allen['MONTHS OF SUPPLY'].diff(3)
+Allen['6MO CHANGE MOS'] = Allen['MONTHS OF SUPPLY'].diff(6)
+Allen['12MO CHANGE MOS'] = Allen['MONTHS OF SUPPLY'].diff(12)
+
+Allen['1 MONTH LAG DOM'] = Allen['MEDIAN DAYS ON MARKET (DAYS)'].shift(1)
+Allen['3 MONTH LAG DOM'] = Allen['MEDIAN DAYS ON MARKET (DAYS)'].shift(3)
+Allen['6 MONTH LAG DOM'] = Allen['MEDIAN DAYS ON MARKET (DAYS)'].shift(6)
+Allen['12 MONTH LAG DOM'] = Allen['MEDIAN DAYS ON MARKET (DAYS)'].shift(12)
+Allen['1MO CHANGE DOM'] = Allen['MEDIAN DAYS ON MARKET (DAYS)'].diff()
+Allen['3MO CHANGE DOM'] = Allen['MEDIAN DAYS ON MARKET (DAYS)'].diff(3)
+Allen['6MO CHANGE DOM'] = Allen['MEDIAN DAYS ON MARKET (DAYS)'].diff(6)
+Allen['12MO CHANGE DOM'] = Allen['MEDIAN DAYS ON MARKET (DAYS)'].diff(12)
+
+Allen['1 MONTH LAG INV'] = Allen['INVENTORY'].shift(1)
+Allen['3 MONTH LAG INV'] = Allen['INVENTORY'].shift(3)
+Allen['6 MONTH LAG INV'] = Allen['INVENTORY'].shift(6)
+Allen['12 MONTH LAG INV'] = Allen['INVENTORY'].shift(12)
+Allen['1MO CHANGE INV'] = Allen['INVENTORY'].diff()
+Allen['3MO CHANGE INV'] = Allen['INVENTORY'].diff(3)
+Allen['6MO CHANGE INV'] = Allen['INVENTORY'].diff(6)
+Allen['12MO CHANGE INV'] = Allen['INVENTORY'].diff(12)
+
+
+Allen['MONTH'] = Allen['PERIOD BEGIN'].dt.month
+Allen['MONTH_SIN'] = np.sin(2 * np.pi * Allen['MONTH']/12)
+Allen['MONTH_COS'] = np.cos(2 * np.pi * Allen['MONTH']/12)
+Allen['MY MOS'] = ((Allen['ACTIVE LISTINGS'] / Allen['PENDING SALES']) + (Allen['INVENTORY'] / Allen['HOMES SOLD'])) / 2
+Allen['CLOSED SALES TRAILING 12MO'] = Allen['HOMES SOLD'].rolling(12).sum()
+Allen['TRUE MOS'] = Allen['INVENTORY'] / (Allen['CLOSED SALES TRAILING 12MO'] / 12)
+Allen['QUARTER'] = Allen['PERIOD BEGIN'].dt.quarter
+result = seasonal_decompose(Allen['TRUE MOS'].dropna(), model='additive', period=12)
+Allen['NEXT MONTH MOS'] = (Allen['MONTHS OF SUPPLY'].shift(-1))
+
+
+q1 = Allen['MONTHS OF SUPPLY'].quantile(0.25)
+
+q3 = Allen['MONTHS OF SUPPLY'].quantile(0.75)
+
+iqr = q3 - q1
+lower_bound = q1 - 1.5 * iqr
+upper_bound = q3 + 1.5 * iqr
+
+Allen['MOS_OUTLIER'] = ((Allen['MONTHS OF SUPPLY'] < lower_bound) | (Allen['MONTHS OF SUPPLY'] > upper_bound))
+
+features = [
+    '1 MONTH LAG MOS',
+    '3 MONTH LAG MOS',
+    '6 MONTH LAG MOS',
+    '12 MONTH LAG MOS',
+    '1 MONTH LAG DOM',
+    '3 MONTH LAG DOM',
+    '6 MONTH LAG DOM',
+    '12 MONTH LAG DOM',
+    '1 MONTH LAG INV',
+    '3 MONTH LAG INV',
+    '6 MONTH LAG INV',
+    '12 MONTH LAG INV',
+    '1MO CHANGE MOS',
+    '3MO CHANGE MOS',
+    '6MO CHANGE MOS',
+    '12MO CHANGE MOS',
+    '1MO CHANGE DOM',
+    '3MO CHANGE DOM',
+    '6MO CHANGE DOM', 
+    '12MO CHANGE DOM',
+    '1MO CHANGE INV',
+    '3MO CHANGE INV',
+    '6MO CHANGE INV',
+    '12MO CHANGE INV',
+    'MONTH_SIN',
+    'MONTH_COS',
+    'MOS_OUTLIER', 
+    'QUARTER'
+]
+
+model_data = Allen[features + ['NEXT MONTH MOS']].dropna()
+
+X = model_data[features]
+y = model_data['NEXT MONTH MOS']
+
+train = model_data[(Allen.loc[model_data.index, 'PERIOD BEGIN'] >= '2023-01-01') & (Allen.loc[model_data.index, 'PERIOD BEGIN'] < '2026-01-01')].copy()
+
+test = model_data[Allen.loc[model_data.index, 'PERIOD BEGIN'] >= '2026-01-01'].copy()
+
+X_train = train[features]
+y_train = train['NEXT MONTH MOS']
+
+X_test = test[features]
+y_test = test['NEXT MONTH MOS']
+
+model = RandomForestRegressor( n_estimators = 181, random_state=42, max_depth=2, min_samples_leaf=4, max_features= .01)
+
+model.fit(X_train, y_train)
+
+predictionsA = model.predict(X_test)
+
+mae = mean_absolute_error(y_test, predictionsA)
+
+print(f'Test set size: {len(y_test)} rows')
+print(f'Mean absolute error: {mae:.2f} months')
+
+importances = pd.Series(model.feature_importances_, index=features).sort_values(ascending=False)
+importaances
